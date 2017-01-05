@@ -3,6 +3,7 @@
 from math import radians, sin, cos, sqrt, asin
 from urllib.request import urlopen
 import xml.etree.ElementTree as XML
+import datetime
 
 #######################################
 ############## ESTACIONS ##############
@@ -187,3 +188,28 @@ def get_aparcaments(url=URL_APARCAMENTS):
             p.__setattr__(k, v(text))
         ret.append(p)
     return ret
+    
+#######################################
+############ ESDEVENIMENTS ############
+#######################################
+
+URL_ESDEVENIMENTS = 'http://www.bcn.cat/tercerlloc/agenda_cultural.xml'
+
+FORMAT_DATA = '%d/%m/%Y'
+
+RUTA_ROWS = 'search/queryresponse/list/list_items/row'
+
+to_date = lambda x: datetime.datetime.strptime(x, FORMAT_DATA).date()
+
+class Esdeveniment(object):
+    def __init__(self, xmlel):
+        xmlel = xmlel.find('item')
+        self.nom = xmlel.find('name').text
+        self.adreça = xmlel.find('address').text
+        interes = xmlel.find('interestinfo/item')
+        if interes:
+            self.info_interes = interes.find('label').text + ': ' + \
+                interes.find('interinfo')
+        else:
+            self.info_interes = None
+        
