@@ -4,13 +4,22 @@ from math import radians, sin, cos, sqrt, asin
 from urllib.request import urlopen
 import xml.etree.ElementTree as XML
 import datetime
+import time
 
+MODE_DEBUG = True
 #######################################
-############## ESTACIONS ##############
+################ Utils ################
 #######################################
-
-URL_BICING = 'http://wservice.viabicing.cat/getstations.php?v=1'
-
+def comptatemps(metode):
+    def temps(*args, **kwargs):
+        start = time.time()
+        res = metode(*args, **kwargs)
+        end = time.time()
+        if MODE_DEBUG:
+            print ('{}: {} segons' \
+                .format(metode.__name__, end-start))
+        return res
+    return temps
 
 def haversine(lat, lon, lat2, lon2):
     """
@@ -32,6 +41,49 @@ def haversine(lat, lon, lat2, lon2):
     c = 2 * asin(sqrt(a))
 
     return c * RADI_TERRA
+
+    
+
+def insert(elem, llista, start=None, end=None):
+    """
+    Inserta una tupla (distància, element) en una llista d'elements ordenada
+    per distància.
+    :param elem: Element a insertar
+    :param llista: Llista ordenada de tuples (distància, estació)
+    :param start: Paràmetre opcional per a les crides recursives
+    :param end: Paràmetre opcional per a les crides recursives
+    """
+    if start is None:
+        start = 0
+    if end is None:
+        end = len(llista) - 1
+    middle = start + int((end - start) / 2)
+
+    if len(llista) == 0:
+        llista.append(elem)
+        return
+    if elem[0] > llista[end][0]:
+        llista.insert(end + 1, elem)
+        return
+    if elem[0] <= llista[start][0]:
+        llista.insert(start, elem)
+        return
+    if start >= end:
+        return
+    if elem[0] < llista[middle][0]:
+        insert(elem, llista, start, middle - 1)
+        return
+    if elem[0] > llista[middle][0]:
+        insert(elem, llista, middle + 1, end)
+        return
+    
+
+    
+#######################################
+############## ESTACIONS ##############
+#######################################
+
+URL_BICING = 'http://wservice.viabicing.cat/getstations.php?v=1'
 
 
 class Estacio(object):
@@ -65,52 +117,17 @@ class Estacio(object):
         return self.bikes > 0
 
     def distancia(self, lat, lon):
-        return haversine(self.lat, self.lon, lat, lon)
+        return haversine(self.lat, self.long, lat, lon)
 
 
 def amb_bicis(estacions):
     return [x for x in estacions if x.disponible() and x.te_bicis()]
 
-
+@comptatemps
 def amb_lloc(estacions):
     return [x for x in estacions if x.disponible() and x.te_llocs()]
 
-
-def insert(elem, llista, start=None, end=None):
-    """
-    Inserta una tupla (distància, estació) en una llista d'estacions ordenada
-    per distància.
-    distància
-    :param elem: Element a insertar
-    :param llista: Llista ordenada de tuples (distància, estació)
-    :param start: Paràmetre opcional per a les crides recursives
-    :param end: Paràmetre opcional per a les crides recursives
-    """
-    if start is None:
-        start = 0
-    if end is None:
-        end = len(llista) - 1
-    middle = int((end - start) / 2)
-
-    if len(llista) == 0:
-        llista.append(elem)
-        return
-    if elem[0] > llista[end][0]:
-        llista.insert(end + 1, elem)
-        return
-    if elem[0] <= llista[start][0]:
-        llista.insert(start, elem)
-        return
-    if start >= end:
-        return
-    if elem[0] < llista[middle][0]:
-        insert(elem, llista, start, middle - 1)
-        return
-    if elem[0] > llista[middle][0]:
-        insert(elem, llista, middle + 1, end)
-        return
-
-
+@comptatemps
 def bicing_a_prop(estacions, lat, lon, dist=0.5):
     ret = []
     for e in estacions:
@@ -122,7 +139,7 @@ def bicing_a_prop(estacions, lat, lon, dist=0.5):
 
     return [y for (x, y) in ret]
 
-
+@comptatemps
 def get_estacions(url=URL_BICING):
     """
     Obté una llista amb totes les dades de les estacions de bicing del web
@@ -165,16 +182,17 @@ class Aparcament(object):
     def distancia(self, lat, lon):
         return haversine(self.gmapx, self.gmapy, lat, lon)
 
-
+@comptatemps
 def aparcaments_a_prop(aparcaments, lat, lon, d=0.5):
     ret = []
     for a in aparcaments:
         dis = a.distancia(lat, lon)
         if dis <= d:
             insert((dis, a), ret)
+
     return [y for (x, y) in ret]
 
-
+@comptatemps
 def get_aparcaments(url=URL_APARCAMENTS):
     ret = []
     with urlopen(url) as openurl:
