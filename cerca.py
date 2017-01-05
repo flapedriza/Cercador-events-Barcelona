@@ -1,9 +1,11 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
+import argparse
 import re
 import time
 import unicodedata
 import xml.etree.ElementTree as Xml
+from ast import literal_eval
 from datetime import date, datetime, timedelta
 from math import radians, sin, cos, sqrt, asin
 from urllib.request import urlopen
@@ -142,19 +144,19 @@ class Estacio(object):
         return haversine(self.lat, self.long, lat, lon)
 
 
-def amb_bicis(estacions):
-    return [x for x in estacions if x.disponible() and x.te_bicis()]
+def amb_bicis(ests):
+    return [x for x in ests if x.disponible() and x.te_bicis()]
 
 
 @comptatemps
-def amb_lloc(estacions):
-    return [x for x in estacions if x.disponible() and x.te_llocs()]
+def amb_lloc(ests):
+    return [x for x in ests if x.disponible() and x.te_llocs()]
 
 
 @comptatemps
-def bicing_a_prop(estacions, lat, lon, dist=0.5):
+def bicing_a_prop(ests, lat, lon, dist=0.5):
     ret = []
-    for e in estacions:
+    for e in ests:
         dis = e.distancia(lat, lon)
         if dis <= dist:
             insert((dis, e), ret)
@@ -211,9 +213,9 @@ class Aparcament(object):
 
 
 @comptatemps
-def aparcaments_a_prop(aparcaments, lat, lon, d=0.5):
+def aparcaments_a_prop(park, lat, lon, d=0.5):
     ret = []
-    for a in aparcaments:
+    for a in park:
         dis = a.distancia(lat, lon)
         if dis <= d:
             insert((dis, a), ret)
@@ -265,13 +267,15 @@ class Esdeveniment(object):
     def __init__(self, xmlel):
         xmlel = xmlel.find('item')
         self.url_mes_info = INICI_INFO_ESDEVENIMENT + xmlel.items()[0][1]
-        self.nom = xmlel.find('name').text
+        self.nom = xmlel.find('name').text.replace('"', '\"')
         try:
-            self.adreça = xmlel.find('address').text
+            addr = xmlel.find('address').text.strip().replace('"', '\"')
+            self.adreça = addr if addr else 'Diferents ubicacions'
         except AttributeError:
             self.adreça = 'N/D'
         try:
-            self.barri = xmlel.find('addresses/item/barri').text
+            self.barri = xmlel.find('addresses/item/barri') \
+                .text.replace('"', '\"')
         except AttributeError:
             self.barri = 'N/D'
         try:
@@ -280,7 +284,7 @@ class Esdeveniment(object):
         except AttributeError:
             self.lat = self.lon = float(0.0)
         try:
-            self.lloc = xmlel.find('institutionname').text
+            self.lloc = xmlel.find('institutionname').text.replace('"', '\"')
         except AttributeError:
             self.lloc = 'N/D'
         try:
@@ -303,25 +307,25 @@ class Esdeveniment(object):
                     to_date(xmlel.find('date').text)
 
     @comptatemps
-    def aparcaments_propers(self, aparcaments):
+    def aparcaments_propers(self, park):
         """
         Retorna una llista amb tots els aparcaments a menys de 500m del event
-        :param aparcaments: Llista d'aparcaments
+        :param park: Llista d'aparcaments
         :return: @description
         """
-        return aparcaments_a_prop(aparcaments, self.lat, self.lon)
+        return aparcaments_a_prop(park, self.lat, self.lon)
 
     @comptatemps
-    def bicing_propers(self, estacions):
+    def bicing_propers(self, ests):
         """
         Retorna una tupla que conté una llista amb les estacions de bicing
         amb bicicletes disponibles i les estacions de bicing amb llocs
         disponibles respectivament que es troben a menys de 500m de l'event
-        :param estacions: Llista d'estacions de bicing
+        :param ests: Llista d'estacions de bicing
         :return: @description
         """
-        estacions = bicing_a_prop(estacions, self.lat, self.lon)
-        return amb_bicis(estacions), amb_lloc(estacions)
+        ests = bicing_a_prop(ests, self.lat, self.lon)
+        return amb_bicis(ests), amb_lloc(ests)
 
 
 @comptatemps
@@ -337,18 +341,18 @@ def get_esdeveniments(url=URL_ESDEVENIMENTS):
     with urlopen(url) as openurl:
         xml = openurl.read()
     reader = Xml.fromstring(xml)
-    esdeveniments = reader.findall(RUTA_ESDEVENIMENTS)
-    for ev in esdeveniments:
+    esdevs = reader.findall(RUTA_ESDEVENIMENTS)
+    for ev in esdevs:
         e = Esdeveniment(ev)
         ret.add(e)
     return ret
 
 
 @comptatemps
-def busca_esdeveniments(query, esdeveniments):
+def busca_esdeveniments(query, esdevs):
     try:
         if STRING_FORM.match(query) is None:
-            quey = eval(query)
+            quey = literal_eval(query)
     except:
         pass
 
@@ -356,26 +360,59 @@ def busca_esdeveniments(query, esdeveniments):
         ret = set()
         for elem in query:
             ret = ret.union(busca_esdeveniments(elem,
-                                                esdeveniments.difference(ret)))
+                                                esdevs.difference(ret)))
         return ret
     elif isinstance(query, list):
-        ret = esdeveniments
+        ret = esdevs
         for elem in query:
             ret = busca_esdeveniments(elem, ret)
         return ret
     elif isinstance(query, str):
         ret = set()
-        for elem in esdeveniments:
+        for elem in esdevs:
             cerca = elimina_accents(query.lower())
             font = elimina_accents("{}|{}|{}".format(elem.nom, elem.lloc,
                                                      elem.barri).lower())
             if cerca in font:
                 ret.add(elem)
         return ret
+    else:
+        raise Exception("El format de l'entrada no és correcte")
 
 
 # TODO
-def esdeveniments_periode(esdeveniments, data, marge):
+def esdeveniments_periode(esdev, data, marge):
     ret = set()
-    for esd in esdeveniments:
+    for esd in esdev:
         pass
+
+
+#######################################
+############### ARGPARSE ##############
+#######################################
+
+parser = argparse.ArgumentParser(description="Cerca esdeveniments a la ciutat"
+                                             "de barcelona a partir de la seva "
+                                             "descripció, ubicació o data")
+
+parser.add_argument('--key', help='Termes de cerca', type=str, default='',
+                    required=True)
+parser.add_argument('--date', help='Dates a buscar', type=str, default='',
+                    required=True)
+parser.add_argument('--debug', '-d', action='store_true', help='Mode debug')
+
+if __name__ == "__main__":
+    parsed = parser.parse_args()
+    MODE_DEBUG = parsed.debug
+    try:
+        estacions = get_estacions()
+        aparcaments = get_aparcaments()
+        print('Obtenint dades dels esdeveniments...')
+        esdeveniments = get_esdeveniments()
+    except:
+        print('No s\'han pogut obtenir les dades d\'interet, comproveu la '
+              'vostra connexió')
+        exit()
+
+    for i in busca_esdeveniments(literal_eval(parsed.key), esdeveniments):
+        print(i.nom, i.lloc, i.adreça, i.data_inici, i.data_fi)
