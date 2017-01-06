@@ -388,6 +388,52 @@ def esdeveniments_periode(esdev, data, marge):
 
 
 #######################################
+################# HTML ################
+#######################################
+
+def base_template():
+    with open('templates/table.html', 'r') as templ:
+        template = templ.read()
+    return template
+
+
+def row_template():
+    with open('templates/row.html', 'r') as templ:
+        template = templ.read()
+    return template
+
+
+def genera_ul(llista):
+    ll = '\t<ul>\n'
+    for elem in llista:
+        ll += '\t\t<li>' + elem.__str__() + '</li>\n'
+    ll += '\t</ul>'
+    return ll
+
+
+def llista_bicing(bicings):
+    ll = '\t<ul>\n<li>Estacions amb bicis:\n'
+    ll += genera_ul(bicings[0])
+    ll += '</li>\n<li>Estacions amb lloc:\n'
+    ll += genera_ul(bicings[1])
+    ll += '</li>\n</ul>'
+    return ll
+
+
+def genera_fila(esdeveniment, bicing, parking):
+    template = row_template()
+    bicing = esdeveniment.bicing_propers(bicing)
+    parking = esdeveniment.aparcaments_propers(parking)
+    llista_bicis = llista_bicing(bicing)
+    llista_parkings = genera_ul(parking)
+    template = template.format(esdeveniment.nom, esdeveniment.lloc,
+                               esdeveniment.data_inici, esdeveniment.data_fi,
+                               esdeveniment.barri, esdeveniment.adreça,
+                               llista_parkings, llista_bicis)
+    return template
+
+
+#######################################
 ############### ARGPARSE ##############
 #######################################
 
