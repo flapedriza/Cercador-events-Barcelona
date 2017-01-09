@@ -8,7 +8,10 @@ lon = 2.1684163
 ests = get_estacions()
 parks = get_aparcaments()
 esdev = get_esdeveniments()
+es = set()
+for i in range(5):
+  es.add(esdev.pop())
 
-print(genera_fila(esdev.pop(), ests, parks))
+genera_fitxer(es, ests, parks)
 
 

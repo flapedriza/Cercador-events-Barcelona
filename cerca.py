@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 import argparse
+import webbrowser
 import re
 import time
 import unicodedata
@@ -148,12 +149,10 @@ def amb_bicis(ests):
     return [x for x in ests if x.disponible() and x.te_bicis()]
 
 
-@comptatemps
 def amb_lloc(ests):
     return [x for x in ests if x.disponible() and x.te_llocs()]
 
 
-@comptatemps
 def bicing_a_prop(ests, lat, lon, dist=0.5):
     ret = []
     for e in ests:
@@ -212,7 +211,6 @@ class Aparcament(object):
         return haversine(self.gmapx, self.gmapy, lat, lon)
 
 
-@comptatemps
 def aparcaments_a_prop(park, lat, lon, d=0.5):
     ret = []
     for a in park:
@@ -306,7 +304,6 @@ class Esdeveniment(object):
                 self.data_inici = self.data_fi = \
                     to_date(xmlel.find('date').text)
 
-    @comptatemps
     def aparcaments_propers(self, park):
         """
         Retorna una llista amb tots els aparcaments a menys de 500m del event
@@ -315,7 +312,6 @@ class Esdeveniment(object):
         """
         return aparcaments_a_prop(park, self.lat, self.lon)
 
-    @comptatemps
     def bicing_propers(self, ests):
         """
         Retorna una tupla que conté una llista amb les estacions de bicing
@@ -426,11 +422,29 @@ def genera_fila(esdeveniment, bicing, parking):
     parking = esdeveniment.aparcaments_propers(parking)
     llista_bicis = llista_bicing(bicing)
     llista_parkings = genera_ul(parking)
+    data_inici = 'Permanent' if esdeveniment.data_inici == date.min else \
+      esdeveniment.data_inici.strftime('%d/%m/%Y')
+    data_fi = 'Permanent' if esdeveniment.data_fi == date.max else \
+      esdeveniment.data_fi.strftime('%d/%m/%Y')
     template = template.format(esdeveniment.nom, esdeveniment.lloc,
-                               esdeveniment.data_inici, esdeveniment.data_fi,
+                               data_inici, data_fi,
                                esdeveniment.barri, esdeveniment.adreça,
                                llista_parkings, llista_bicis)
     return template
+  
+def genera_taula(llista_esd, bicings, parkings):
+  template = base_template()
+  files = ''
+  for esd in llista_esd:
+    files += genera_fila(esd, bicings, parkings) + '\n'
+  return template.format(files)
+
+#TODO Posar permanent si les dates son min i max, format de data correcte
+@comptatemps
+def genera_fitxer(llesd, bicis, parkings):
+  taula = genera_taula(llesd, bicis, parkings)
+  with open('resultat.html', 'w') as fitxer:
+    fitxer.write(taula)
 
 
 #######################################
@@ -441,13 +455,17 @@ parser = argparse.ArgumentParser(description="Cerca esdeveniments a la ciutat"
                                              "de barcelona a partir de la seva "
                                              "descripció, ubicació o data")
 
-parser.add_argument('--key', help='Termes de cerca', type=str, default='',
+parser.add_argument('--key', '-k', help='Termes de cerca', type=str, default='',
                     required=True)
 parser.add_argument('--date', help='Dates a buscar', type=str, default='',
                     required=True)
 parser.add_argument('--debug', '-d', action='store_true', help='Mode debug')
 
-if __name__ == "__main__":
+parser.add_argument('--open', '-o', action='store_true', 
+		    help='Obrir fitxer HTML al acabar')
+
+@comptatemps
+def main():
     parsed = parser.parse_args()
     MODE_DEBUG = parsed.debug
     try:
@@ -460,5 +478,13 @@ if __name__ == "__main__":
               'vostra connexió')
         exit()
 
-    for i in busca_esdeveniments(literal_eval(parsed.key), esdeveniments):
-        print(i.nom, i.lloc, i.adreça, i.data_inici, i.data_fi)
+    print('Cercant esdeveniments...')
+    cerca = busca_esdeveniments(literal_eval(parsed.key), esdeveniments)
+    print('Generant taula HTML...')
+    genera_fitxer(cerca, estacions, aparcaments)
+    if parsed.open:
+      webbrowser.open('resultat.html')
+      
+if __name__ == "__main__":
+  main()
+    
