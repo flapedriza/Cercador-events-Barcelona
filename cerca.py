@@ -17,7 +17,11 @@ MODE_DEBUG = True
 ################ Utils ################
 #######################################
 
-RADI_TERRA = 6367.4447
+FORMAT_DATA = '%d/%m/%Y'
+
+
+def to_date(x, format_data=FORMAT_DATA):
+    return datetime.strptime(x, format_data).date()
 
 
 def elimina_accents(s):
@@ -36,7 +40,7 @@ def elimina_accents(s):
 
 def comptatemps(metode):
     """
-    Decorador per a calcular el temps emprat en exacutar un mètode
+    Decorador per a calcular el temps emprat en executar un mètode
     """
 
     def temps(*args, **kwargs):
@@ -53,14 +57,15 @@ def comptatemps(metode):
 
 def haversine(lat, lon, lat2, lon2):
     """
-    Càlcul de la distància entre un punt geogràfic i l'estació
-    mitjançant la fórmula de Haversine
+    Càlcul de la distància entre dos punts geogràfics
+    mitjançant la fórmula del Haversine
     :param lat: Latitud del primer punt geogràfic
     :param lon: Longitud del primer punt geogràfic
     :param lat2: Latitud del segon punt geogràfic
     :param lon2: Longitud del segon punt geogràfic
     :return: Distància
     """
+    radi_terra = 6367.4447
     lat, lon, lat2, lon2 = map(radians, [lat, lon, lat2, lon2])
 
     dlat = lat2 - lat
@@ -68,15 +73,15 @@ def haversine(lat, lon, lat2, lon2):
     a = sin(dlat / 2) ** 2 + cos(lat) * cos(lat2) * sin(dlon / 2) ** 2
     c = 2 * asin(sqrt(a))
 
-    return c * RADI_TERRA
+    return c * radi_terra
 
 
 def insert(elem, llista, start=None, end=None):
     """
-    Inserta una tupla (distància, element) en una llista d'elements ordenada
-    per distància.
+    Inserta una tupla (ordre, element) en una llista d'elements ordenada
+    pel primer element.
     :param elem: Element a insertar
-    :param llista: Llista ordenada de tuples (distància, element)
+    :param llista: Llista ordenada de tuples (ordre, element)
     :param start: Paràmetre opcional per a les crides recursives
     :param end: Paràmetre opcional per a les crides recursives
     """
@@ -251,14 +256,9 @@ URL_ESDEVENIMENTS = 'http://www.bcn.cat/tercerlloc/agenda_cultural.xml'
 
 INICI_INFO_ESDEVENIMENT = 'http://guia.barcelona.cat/ca/detall/'
 
-FORMAT_DATA = '%d/%m/%Y'
-
 RUTA_ESDEVENIMENTS = 'search/queryresponse/list/list_items/row'
 
 STRING_FORM = re.compile(r'[\"\']?\w+[\s\w*]*[\"\']?')
-
-
-def to_date(x): return datetime.strptime(x, FORMAT_DATA).date()
 
 
 class Esdeveniment(object):
@@ -302,7 +302,7 @@ class Esdeveniment(object):
                 self.data_fi = date.max
             else:
                 self.data_inici = self.data_fi = \
-                    to_date(xmlel.find('date').text)
+                    to_date(data)
 
     def aparcaments_propers(self, park):
         """
@@ -373,14 +373,55 @@ def busca_esdeveniments(query, esdevs):
                 ret.add(elem)
         return ret
     else:
-        raise Exception("El format de l'entrada no és correcte")
+        raise Exception("El format del paràmetre key no és correcte")
 
 
-# TODO
-def esdeveniments_periode(esdev, data, marge):
-    ret = set()
-    for esd in esdev:
-        pass
+def entre_dates(es, dat):
+    if isinstance(dat, tuple):
+        data = to_date(dat[0])
+        data_inici = data + timedelta(days=dat[1])
+        data_fi = data + timedelta(days=dat[2])
+    elif isinstance(dat, str):
+        data = data_inici = data_fi = to_date(dat)
+    else:
+        raise Exception('Format del paràmetre date no vàlid')
+
+    if data_inici <= es.data_fi and data_fi >= es.data_inici:
+        if es.data_inici == date.min:
+            dif = timedelta.max
+        else:
+            diff1 = abs(data - es.data_inici)
+            diff2 = abs(data - es.data_fi)
+            dif = min(diff1, diff2)
+        return dif, True
+    else:
+        return timedelta.max, False
+
+
+@comptatemps
+def esdeveniments_periode(esdev, dates):
+    ret = []
+    if isinstance(dates, list):
+        for e in esdev:
+            llista = map(lambda x: entre_dates(e, x), dates)
+            dif = llista[0][0]
+            overlaps = False
+            for l in llista:
+                if l[1]:
+                    overlaps = True
+                    if l[0] < dif:
+                        dif = l[0]
+            if overlaps:
+                insert((dif, e), ret)
+
+    elif isinstance(dates, str) or isinstance(dates, tuple):
+        for e in esdev:
+            tupl = entre_dates(e, dates)
+            if tupl[1]:
+                insert((tupl[0], e), ret)
+    else:
+        raise Exception("El format del paràmetre date no és correcte")
+    return [l[1] for l in ret]
 
 
 #######################################
@@ -423,28 +464,35 @@ def genera_fila(esdeveniment, bicing, parking):
     llista_bicis = llista_bicing(bicing)
     llista_parkings = genera_ul(parking)
     data_inici = 'Permanent' if esdeveniment.data_inici == date.min else \
-      esdeveniment.data_inici.strftime('%d/%m/%Y')
+        esdeveniment.data_inici.strftime('%d/%m/%Y')
     data_fi = 'Permanent' if esdeveniment.data_fi == date.max else \
-      esdeveniment.data_fi.strftime('%d/%m/%Y')
-    template = template.format(esdeveniment.nom, esdeveniment.lloc,
-                               data_inici, data_fi,
-                               esdeveniment.barri, esdeveniment.adreça,
-                               llista_parkings, llista_bicis)
+        esdeveniment.data_fi.strftime('%d/%m/%Y')
+    template = template.format(esdeveniment.nom,
+                               esdeveniment.lloc,
+                               data_inici,
+                               data_fi,
+                               esdeveniment.barri,
+                               esdeveniment.adreça,
+                               esdeveniment.info_interes,
+                               llista_parkings,
+                               llista_bicis,
+                               esdeveniment.url_mes_info)
     return template
-  
-def genera_taula(llista_esd, bicings, parkings):
-  template = base_template()
-  files = ''
-  for esd in llista_esd:
-    files += genera_fila(esd, bicings, parkings) + '\n'
-  return template.format(files)
 
-#TODO Posar permanent si les dates son min i max, format de data correcte
+
+def genera_taula(llista_esd, bicings, parkings):
+    template = base_template()
+    files = ''
+    for esd in llista_esd:
+        files += genera_fila(esd, bicings, parkings) + '\n'
+    return template.format(files)
+
+
 @comptatemps
 def genera_fitxer(llesd, bicis, parkings):
-  taula = genera_taula(llesd, bicis, parkings)
-  with open('resultat.html', 'w') as fitxer:
-    fitxer.write(taula)
+    taula = genera_taula(llesd, bicis, parkings)
+    with open('resultat.html', 'w') as fitxer:
+        fitxer.write(taula)
 
 
 #######################################
@@ -456,17 +504,19 @@ parser = argparse.ArgumentParser(description="Cerca esdeveniments a la ciutat"
                                              "descripció, ubicació o data")
 
 parser.add_argument('--key', '-k', help='Termes de cerca', type=str, default='',
-                    required=True)
+                    required=False)
 parser.add_argument('--date', help='Dates a buscar', type=str, default='',
-                    required=True)
+                    required=False)
 parser.add_argument('--debug', '-d', action='store_true', help='Mode debug')
 
-parser.add_argument('--open', '-o', action='store_true', 
-		    help='Obrir fitxer HTML al acabar')
+parser.add_argument('--open', '-o', action='store_true',
+                    help='Obrir fitxer HTML al acabar')
+
 
 @comptatemps
 def main():
     parsed = parser.parse_args()
+    global MODE_DEBUG
     MODE_DEBUG = parsed.debug
     try:
         estacions = get_estacions()
@@ -478,13 +528,25 @@ def main():
               'vostra connexió')
         exit()
 
-    print('Cercant esdeveniments...')
-    cerca = busca_esdeveniments(literal_eval(parsed.key), esdeveniments)
+    if parsed.key:
+        try:
+            esdeveniments = busca_esdeveniments(literal_eval(parsed.key),
+                                                esdeveniments)
+        except Exception as ex:
+            print(ex)
+            exit()
+    if parsed.date:
+        try:
+            esdeveniments = esdeveniments_periode(esdeveniments,
+                                                  literal_eval(parsed.date))
+        except Exception as ex:
+            print(ex)
+            exit()
     print('Generant taula HTML...')
-    genera_fitxer(cerca, estacions, aparcaments)
+    genera_fitxer(esdeveniments, estacions, aparcaments)
     if parsed.open:
-      webbrowser.open('resultat.html')
-      
+        webbrowser.open('resultat.html')
+
+
 if __name__ == "__main__":
-  main()
-    
+    main()
